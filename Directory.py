@@ -2,7 +2,7 @@ import telebot
 import sqlite3
 from telebot import types
 
-TOKEN = 'token'
+TOKEN = 'TOKEN'
 
 # Функция для создания соединения с базой данных и создания таблицы users
 def create_db():
@@ -45,8 +45,22 @@ def handle_start(message):
         markup.add(item)
         bot.send_message(message.chat.id, "Вы администратор. Используйте кнопку для выгрузки данных.", reply_markup=markup)
     else:
-        bot.send_message(message.chat.id, "Добро пожаловать! Пожалуйста, укажите ваше ФИО:")
-        bot.register_next_step_handler(message, process_full_name)
+        # Проверяем, есть ли данные о пользователе в базе
+        user_id = message.from_user.id
+        if check_user_exists(user_id):
+            bot.send_message(message.chat.id, "Вы уже зарегистрированы в системе.")
+        else:
+            bot.send_message(message.chat.id, "Добро пожаловать! Пожалуйста, укажите ваше ФИО:")
+            bot.register_next_step_handler(message, process_full_name)
+
+# Функция для проверки наличия данных о пользователе в базе
+def check_user_exists(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM users WHERE user_id=?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result is not None
 
 # Функция для обработки ФИО пользователя
 def process_full_name(message):
@@ -87,6 +101,7 @@ def save_user_data(message, full_name, phone_number, entrance):
         bot.send_message(message.chat.id, "Вы успешно зарегистрированы.")
     except Exception as e:
         print(f"Error saving user data: {e}")
+        bot.send_message(message.chat.id, "Произошла ошибка при сохранении данных. Обратитесь к администратору.")
     finally:
         # Закрываем соединение с базой данных
         cursor.close()
@@ -109,20 +124,24 @@ def handle_export_data(message):
         cursor.execute('SELECT * FROM users')
         users_data = cursor.fetchall()
 
-        # Запись данных в файл
-        with open('exported_data.txt', 'w') as file:
-            for user in users_data:
-                file.write(f"Пользователь ID: {user[0]}\n")
-                file.write(f"ФИО: {user[1]}\n")
-                file.write(f"Номер телефона: {user[2]}\n")
-                file.write(f"Подъезд: {user[3]}\n")
-                file.write(f"Квартира: {user[4]}\n\n")
+        if users_data:
+            # Запись данных в файл
+            with open('exported_data.txt', 'w', encoding='utf-8') as file:
+                for user in users_data:
+                    file.write(f"Пользователь ID: {user[0]}\n")
+                    file.write(f"ФИО: {user[1]}\n")
+                    file.write(f"Номер телефона: {user[2]}\n")
+                    file.write(f"Подъезд: {user[3]}\n")
+                    file.write(f"Квартира: {user[4]}\n\n")
 
-        # Отправка файла администратору
-        with open('exported_data.txt', 'rb') as file:
-            bot.send_document(admin_id, file)
+            # Отправка файла администратору
+            with open('exported_data.txt', 'rb') as file:
+                bot.send_document(admin_id, file)
+        else:
+            bot.send_message(message.chat.id, "В базе данных нет зарегистрированных пользователей.")
     except Exception as e:
         print(f"Error exporting data: {e}")
+        bot.send_message(message.chat.id, "Произошла ошибка при выгрузке данных. Обратитесь к администратору.")
     finally:
         # Закрываем соединение с базой данных
         cursor.close()
